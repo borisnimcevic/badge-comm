@@ -1,0 +1,109 @@
+# =========================
+
+# ESP-IDF / ESP32 Project
+
+# =========================
+
+# Build output
+
+/build/
+/build_*/
+/out/
+/dist/
+
+# CMake
+
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Ninja
+
+.ninja_log
+.ninja_deps
+
+# sdkconfig (generated config)
+
+sdkconfig
+sdkconfig.old
+sdkconfig.*.old
+
+# Dependency lock (optional — keep if you want reproducible builds)
+
+# dependencies.lock
+
+# IDF component manager
+
+managed_components/
+
+# Partition / binaries / firmware
+
+*.bin
+*.elf
+*.map
+*.hex
+
+# Flash / monitor logs
+
+*.log
+
+# Python virtual environments
+
+.venv/
+venv/
+env/
+
+# ESP-IDF tools cache (if inside project)
+
+.espressif/
+
+# VSCode
+
+.vscode/
+*.code-workspace
+
+# CLion / JetBrains
+
+.idea/
+
+# Eclipse
+
+.project
+.cproject
+.settings/
+
+# macOS
+
+.DS_Store
+
+# Linux
+
+*~
+
+# Windows
+
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+
+*.swp
+*.swo
+*.tmp
+
+# Coverage / testing
+
+coverage/
+htmlcov/
+
+# =========================
+
+# Optional: Keep local config overrides
+
+# =========================
+
+# Uncomment if you create local-only configs
+
+# sdkconfig.local
+
