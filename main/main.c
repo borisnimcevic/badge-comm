@@ -11,14 +11,23 @@
 #define LED_GPIO        48
 #define LED_ENABLE_GPIO 47
 
-// Number of LEDs
-#define LED_COUNT 1
+#define LED_COUNT 6
+
+// Brightness 0–255 (try 10–40 indoors)
+#define BRIGHTNESS 20
 
 static led_strip_handle_t strip;
 
+
+// Scale helper
+static uint8_t scale(uint8_t value)
+{
+    return (value * BRIGHTNESS) / 255;
+}
+
+
 static void ws2812_init(void)
 {
-    // Enable pin HIGH
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << LED_ENABLE_GPIO),
         .mode = GPIO_MODE_OUTPUT,
@@ -26,7 +35,6 @@ static void ws2812_init(void)
     gpio_config(&io_conf);
     gpio_set_level(LED_ENABLE_GPIO, 1);
 
-    // LED strip configuration
     led_strip_config_t strip_config = {
         .strip_gpio_num = LED_GPIO,
         .max_leds = LED_COUNT,
@@ -36,38 +44,43 @@ static void ws2812_init(void)
     };
 
     led_strip_rmt_config_t rmt_config = {
-        .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 10 * 1000 * 1000, // 10 MHz
+        .resolution_hz = 10 * 1000 * 1000,
         .mem_block_symbols = 64,
         .flags.with_dma = false,
     };
 
     ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &strip));
-
     led_strip_clear(strip);
 }
 
-static void set_color(uint8_t r, uint8_t g, uint8_t b)
+
+static void set_all(uint8_t r, uint8_t g, uint8_t b)
 {
-    led_strip_set_pixel(strip, 0, r, g, b);
+    r = scale(r);
+    g = scale(g);
+    b = scale(b);
+
+    for (int i = 0; i < LED_COUNT; i++) {
+        led_strip_set_pixel(strip, i, r, g, b);
+    }
+
     led_strip_refresh(strip);
 }
+
 
 void app_main(void)
 {
     ws2812_init();
 
-    ESP_LOGI(TAG, "Starting WS2812 demo");
-
     while (1) {
-        set_color(255, 0, 0);
+
+        set_all(255, 0, 0);
         vTaskDelay(pdMS_TO_TICKS(1000));
 
-        set_color(0, 255, 0);
+        set_all(0, 255, 0);
         vTaskDelay(pdMS_TO_TICKS(1000));
 
-        set_color(0, 0, 255);
+        set_all(0, 0, 255);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
-
