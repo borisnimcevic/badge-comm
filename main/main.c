@@ -4,6 +4,8 @@
 #include "driver/gpio.h"
 #include "led_strip.h"
 #include "esp_log.h"
+#include "esp_random.h"
+#include <math.h>
 
 #define TAG "WS2812"
 
@@ -23,7 +25,173 @@
 #define BTN_DATA   4
 #define BTN_LOAD   5
 
+
+static int current_mode = 0;
+static uint32_t anim_step = 0;
+
 static led_strip_handle_t strip;
+
+
+// Scale helper
+static uint8_t scale(uint8_t value)
+{
+    return (value * BRIGHTNESS) / 255;
+}
+
+
+static void set_all(uint8_t r, uint8_t g, uint8_t b)
+{
+    r = scale(r);
+    g = scale(g);
+    b = scale(b);
+
+    for (int i = 0; i < LED_COUNT; i++) {
+        led_strip_set_pixel(strip, i, r, g, b);
+    }
+
+    led_strip_refresh(strip);
+}
+
+static void hsv2rgb(uint16_t h, uint8_t s, uint8_t v,
+                    uint8_t *r, uint8_t *g, uint8_t *b)
+{
+    uint8_t region = h / 43;
+    uint8_t remainder = (h - (region * 43)) * 6;
+
+    uint8_t p = (v * (255 - s)) >> 8;
+    uint8_t q = (v * (255 - ((s * remainder) >> 8))) >> 8;
+    uint8_t t = (v * (255 - ((s * (255 - remainder)) >> 8))) >> 8;
+
+    switch (region) {
+        case 0: *r=v; *g=t; *b=p; break;
+        case 1: *r=q; *g=v; *b=p; break;
+        case 2: *r=p; *g=v; *b=t; break;
+        case 3: *r=p; *g=q; *b=v; break;
+        case 4: *r=t; *g=p; *b=v; break;
+        default:*r=v; *g=p; *b=q; break;
+    }
+}
+
+static uint8_t heat[LED_COUNT];
+
+static void anim_fire(void)
+{
+    for (int i = 0; i < LED_COUNT; i++) {
+        int cooldown = esp_random() % 40;
+        heat[i] = (heat[i] > cooldown) ? heat[i] - cooldown : 0;
+    }
+
+    for (int i = LED_COUNT - 1; i >= 2; i--) {
+        heat[i] = (heat[i-1] + heat[i-2] + heat[i-2]) / 3;
+    }
+
+    if ((esp_random() % 255) < 120) {
+        int y = esp_random() % 2; // bottom LEDs
+        heat[y] = 160 + (esp_random() % 95);
+    }
+
+    for (int i = 0; i < LED_COUNT; i++) {
+        uint8_t t = heat[i];
+
+        uint8_t r = t;
+        uint8_t g = t > 128 ? 255 : t * 2;
+        uint8_t b = t > 200 ? t : 0;
+
+        led_strip_set_pixel(strip, i,
+                            scale(r),
+                            scale(g),
+                            scale(b));
+    }
+
+    led_strip_refresh(strip);
+}
+
+
+static void anim_rainbow(void)
+{
+    for (int i = 0; i < LED_COUNT; i++) {
+
+        uint16_t hue = (anim_step * 5 + i * 40) % 255;
+
+        uint8_t r,g,b;
+        hsv2rgb(hue, 255, 255, &r, &g, &b);
+
+        led_strip_set_pixel(strip, i,
+                            scale(r),
+                            scale(g),
+                            scale(b));
+    }
+
+    led_strip_refresh(strip);
+}
+
+static void anim_police(void)
+{
+    bool phase = (anim_step / 10) % 2;
+
+    for (int i = 0; i < LED_COUNT; i++) {
+
+        if ((i % 2) == phase)
+            led_strip_set_pixel(strip, i, scale(255), 0, 0);
+        else
+            led_strip_set_pixel(strip, i, 0, 0, scale(255));
+    }
+
+    led_strip_refresh(strip);
+}
+
+static void anim_breath(void)
+{
+    float x = (sinf(anim_step * 0.05f) + 1.0f) * 0.5f;
+    uint8_t v = x * 255;
+
+    set_all(v, v, v);
+}
+
+static void anim_sparkle(void)
+{
+    set_all(10, 10, 10);
+
+    int p = esp_random() % LED_COUNT;
+
+    led_strip_set_pixel(strip, p,
+                        scale(255),
+                        scale(255),
+                        scale(255));
+
+    led_strip_refresh(strip);
+}
+
+static void anim_lava(void)
+{
+    float x = (sinf(anim_step * 0.08f) + 1.0f) * 0.5f;
+    uint8_t v = x * 255;
+
+    for (int i = 0; i < LED_COUNT; i++) {
+
+        led_strip_set_pixel(strip, i,
+                            scale(v),
+                            scale(v / 4),
+                            0);
+    }
+
+    led_strip_refresh(strip);
+}
+
+static void anim_wipe(void)
+{
+    int pos = anim_step % LED_COUNT;
+
+    for (int i = 0; i < LED_COUNT; i++) {
+
+        if (i == pos)
+            led_strip_set_pixel(strip, i, scale(255), scale(100), 0);
+        else
+            led_strip_set_pixel(strip, i, 0, 0, 0);
+    }
+
+    led_strip_refresh(strip);
+}
 
 
 static void buttons_init(void)
@@ -85,12 +253,6 @@ static uint8_t buttons_read(void)
 }
 
 
-// Scale helper
-static uint8_t scale(uint8_t value)
-{
-    return (value * BRIGHTNESS) / 255;
-}
-
 
 static void ws2812_init(void)
 {
@@ -120,18 +282,23 @@ static void ws2812_init(void)
 }
 
 
-static void set_all(uint8_t r, uint8_t g, uint8_t b)
+static void run_animation(void)
 {
-    r = scale(r);
-    g = scale(g);
-    b = scale(b);
+    switch (current_mode) {
 
-    for (int i = 0; i < LED_COUNT; i++) {
-        led_strip_set_pixel(strip, i, r, g, b);
+        case 0: anim_rainbow(); break;
+        case 1: anim_fire(); break;
+        case 2: anim_police(); break;
+        case 3: anim_breath(); break;
+        case 4: anim_wipe(); break;
+        case 5: anim_sparkle(); break;
+        case 6: anim_lava(); break;
+        case 7: set_all(0,0,0); break;
     }
 
-    led_strip_refresh(strip);
+    anim_step++;
 }
+
 
 
 void app_main(void)
@@ -145,20 +312,15 @@ void app_main(void)
 
         uint8_t btn = buttons_read();
 
-        if (btn != last) {
-
-            if (btn & (1 << 0)) set_all(255, 0, 0);
-            if (btn & (1 << 1)) set_all(0, 255, 0);
-            if (btn & (1 << 2)) set_all(0, 0, 255);
-            if (btn & (1 << 3)) set_all(255, 255, 255);
-            if (btn & (1 << 4)) set_all(255, 0, 255);
-            if (btn & (1 << 5)) set_all(0, 255, 255);
-            if (btn & (1 << 6)) set_all(255, 128, 0);
-            if (btn & (1 << 7)) set_all(0, 0, 0);
-
-            last = btn;
+        for (int i = 0; i < 8; i++) {
+        if (btn & (1 << i)) {
+            current_mode = i;
+         }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(20));
+
+        run_animation();
+
+        vTaskDelay(pdMS_TO_TICKS(30));
     }
 }
