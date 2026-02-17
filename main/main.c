@@ -16,7 +16,73 @@
 // Brightness 0–255 (try 10–40 indoors)
 #define BRIGHTNESS 20
 
+
+// Button stuff
+#define BTN_CE     7
+#define BTN_CLK    6
+#define BTN_DATA   4
+#define BTN_LOAD   5
+
 static led_strip_handle_t strip;
+
+
+static void buttons_init(void)
+{
+    gpio_config_t out = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask =
+            (1ULL << BTN_CLK) |
+            (1ULL << BTN_CE)  |
+            (1ULL << BTN_LOAD),
+    };
+    gpio_config(&out);
+
+    gpio_config_t in = {
+        .mode = GPIO_MODE_INPUT,
+        .pin_bit_mask = (1ULL << BTN_DATA),
+        .pull_up_en = 1,
+    };
+    gpio_config(&in);
+
+    // Idle states
+    gpio_set_level(BTN_CE, 1);
+    gpio_set_level(BTN_CLK, 0);
+    gpio_set_level(BTN_LOAD, 1);
+}
+
+static uint8_t buttons_read(void)
+{
+    uint8_t data = 0;
+
+    // Disable clock
+    gpio_set_level(BTN_CE, 1);
+
+    // Latch inputs
+    gpio_set_level(BTN_LOAD, 0);
+    esp_rom_delay_us(5);
+    gpio_set_level(BTN_LOAD, 1);
+
+    // Enable clock
+    gpio_set_level(BTN_CE, 0);
+
+    for (int i = 0; i < 8; i++) {
+        int value = gpio_get_level(BTN_DATA);
+
+        if (value) {
+            data |= (1 << i);
+        }
+
+        // Clock pulse
+        gpio_set_level(BTN_CLK, 1);
+        esp_rom_delay_us(1);
+        gpio_set_level(BTN_CLK, 0);
+    }
+
+    // Disable clock again
+    gpio_set_level(BTN_CE, 1);
+
+    return data;
+}
 
 
 // Scale helper
@@ -71,16 +137,28 @@ static void set_all(uint8_t r, uint8_t g, uint8_t b)
 void app_main(void)
 {
     ws2812_init();
+    buttons_init();
+
+    uint8_t last = 0;
 
     while (1) {
 
-        set_all(255, 0, 0);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        uint8_t btn = buttons_read();
 
-        set_all(0, 255, 0);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        if (btn != last) {
 
-        set_all(0, 0, 255);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+            if (btn & (1 << 0)) set_all(255, 0, 0);
+            if (btn & (1 << 1)) set_all(0, 255, 0);
+            if (btn & (1 << 2)) set_all(0, 0, 255);
+            if (btn & (1 << 3)) set_all(255, 255, 255);
+            if (btn & (1 << 4)) set_all(255, 0, 255);
+            if (btn & (1 << 5)) set_all(0, 255, 255);
+            if (btn & (1 << 6)) set_all(255, 128, 0);
+            if (btn & (1 << 7)) set_all(0, 0, 0);
+
+            last = btn;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
