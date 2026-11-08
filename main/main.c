@@ -69,7 +69,7 @@ static void on_receive(const esp_now_recv_info_t *info,
              rssi);
 
     // Adjust threshold if needed
-    if (rssi > -70) {
+    if (rssi > -15) {
 
         ESP_LOGI(TAG_SYNC, "SYNCED!");
 
